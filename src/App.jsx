@@ -121,6 +121,97 @@ function App() {
 
     const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 
+    // Helper to parse time string "HH:MM" to minutes
+    const parseTime = (timeStr) => {
+        const [hh, mm] = timeStr.split(':').map(Number);
+        return hh * 60 + mm;
+    };
+
+    // Layout algorithm for overlapping events
+    const layoutDayEvents = (events) => {
+        // Sort by start time
+        const sorted = [...events].sort((a, b) => parseTime(a.startTime) - parseTime(b.startTime));
+        const clusters = [];
+
+        // simple clustering: if event overlaps with cluster, add to cluster
+        for (const event of sorted) {
+            const start = parseTime(event.startTime);
+            const end = parseTime(event.endTime);
+
+            let added = false;
+            for (const cluster of clusters) {
+                // Check overlap with cluster bounds
+                if (start < cluster.end) {
+                    cluster.events.push(event);
+                    cluster.end = Math.max(cluster.end, end);
+                    added = true;
+                    break;
+                }
+            }
+
+            if (!added) {
+                clusters.push({ events: [event], start, end });
+            }
+        }
+
+        const nodes = [];
+
+        // Process each cluster to assign width/left
+        for (const cluster of clusters) {
+            const columns = []; // array of arrays of events
+
+            for (const event of cluster.events) {
+                const start = parseTime(event.startTime);
+                const end = parseTime(event.endTime);
+
+                // Find first column where this event fits
+                let placed = false;
+                for (let i = 0; i < columns.length; i++) {
+                    const lastInCol = columns[i][columns[i].length - 1];
+                    if (parseTime(lastInCol.endTime) <= start) {
+                        columns[i].push(event);
+                        event.colIndex = i;
+                        placed = true;
+                        break;
+                    }
+                }
+
+                if (!placed) {
+                    columns.push([event]);
+                    event.colIndex = columns.length - 1;
+                }
+            }
+
+            const totalCols = columns.length;
+
+            for (const event of cluster.events) {
+                const start = parseTime(event.startTime);
+                const end = parseTime(event.endTime);
+                // 08:00 is 480 min. Grid starts at 08:00.
+                // Scale: 1 px per min is usually good for desktop (60px/hour)
+                const startMin = 480;
+                const scale = 1.0;
+
+                const top = (start - startMin) * scale;
+                const height = (end - start) * scale;
+                const width = 100 / totalCols;
+                const left = event.colIndex * width;
+
+                nodes.push({
+                    event,
+                    style: {
+                        top: `${top}px`,
+                        height: `${height}px`,
+                        left: `${left}%`,
+                        width: `${width}%`,
+                        position: 'absolute'
+                    }
+                });
+            }
+        }
+        return nodes;
+    };
+
     return (
         <div className="container">
             <header>
@@ -225,25 +316,54 @@ function App() {
             </div>
 
             <div className="week-columns">
+                {/* Time Axis Column */}
+                <div className="time-axis" style={{ marginTop: '30px' }}>
+                    {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map(h => (
+                        <div key={h} className="time-marker" style={{ top: `${(h * 60 - 480) * 1.0}px` }}>
+                            {h}:00
+                        </div>
+                    ))}
+                </div>
+
                 {days.map(day => {
-                    // Gather all events for this day, flatten, and sort by time
-                    const dayEvents = courses.flatMap(c =>
+                    // Gather all events for this day
+                    const dayEventsRaw = courses.flatMap(c =>
                         c.events
                             .filter(e => e.day === day)
                             .filter(e => showTests || !e.isATest)
                             .map(e => ({ ...e, color: c.color, code: c.code }))
-                    ).sort((a, b) => a.startTime.localeCompare(b.startTime));
+                    );
+
+                    const eventNodes = layoutDayEvents(dayEventsRaw);
 
                     return (
                         <div key={day} className="day-column">
                             <h3>{day}</h3>
-                            <div className="day-events">
-                                {dayEvents.map((e, idx) => (
-                                    <div key={`${e.code}-${idx}`} className="event-card" style={{ backgroundColor: e.color }}>
-                                        <div className="event-time">{e.startTime} - {e.endTime}</div>
-                                        <div className="event-code"><strong>{e.code}</strong></div>
-                                        <div className="event-type">{e.type}</div>
-                                        {showRooms && <div className="event-room">{e.room}</div>}
+                            <div className="day-events-container">
+                                {/* Grid lines */}
+                                {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map(h => (
+                                    <div key={h} className="grid-line" style={{ top: `${(h * 60 - 480) * 1.0}px` }}></div>
+                                ))}
+
+                                {eventNodes.map((node, idx) => (
+                                    <div
+                                        key={`${node.event.code}-${idx}`}
+                                        className="event-card absolute"
+                                        style={{
+                                            ...node.style,
+                                            backgroundColor: node.event.color,
+                                            fontSize: '0.75rem',
+                                            overflow: 'hidden',
+                                            padding: '2px 4px'
+                                        }}
+                                        title={`${node.event.code} - ${node.event.type} (${node.event.startTime} - ${node.event.endTime})`}
+                                    >
+                                        <div style={{ fontWeight: 'bold' }}>{node.event.code}</div>
+                                        <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {node.event.startTime}-{node.event.endTime}
+                                        </div>
+                                        <div style={{ fontStyle: 'italic' }}>{node.event.type}</div>
+                                        {showRooms && <div className="event-room">{node.event.room}</div>}
                                     </div>
                                 ))}
                             </div>

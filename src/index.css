@@ -16,49 +16,51 @@ body {
 .container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 1rem;
 }
 
 header h1 {
   text-align: center;
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
+  margin-top: 0.5rem;
+  font-size: 1.8rem;
 }
 
 .config-panel {
   display: flex;
   justify-content: center;
-  gap: 1.5rem;
+  gap: 1rem;
   flex-wrap: wrap;
   align-items: center;
   background: #333;
-  padding: 1.5rem;
+  padding: 0.8rem;
   border-radius: 12px;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1rem;
 }
 
 .config-panel label {
   display: flex;
   flex-direction: column;
-  font-size: 0.9rem;
-  gap: 0.3rem;
+  font-size: 0.85rem;
+  gap: 0.2rem;
 }
 
 .config-panel select,
 .config-panel input {
-  padding: 0.5rem;
+  padding: 0.4rem;
   border-radius: 6px;
   border: 1px solid #555;
   background: #2a2a2a;
   color: white;
-  font-size: 1rem;
+  font-size: 0.95rem;
 }
 
 .input-group {
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
-  margin-top: 1.2rem;
-  /* Align with label inputs */
+  margin-top: 0;
+  /* Align better with single line */
 }
 
 button {
@@ -66,10 +68,11 @@ button {
   background-color: #646cff;
   color: white;
   border: none;
-  padding: 0.55rem 1.2rem;
+  padding: 0.45rem 1rem;
   border-radius: 6px;
   font-weight: 500;
   transition: background 0.25s;
+  font-size: 0.9rem;
 }
 
 button:hover {
@@ -85,8 +88,8 @@ button:disabled {
   background-color: transparent;
   border: 1px solid #555;
   color: #aaa;
-  font-size: 0.85rem;
-  padding: 0.4rem 1rem;
+  font-size: 0.8rem;
+  padding: 0.3rem 0.8rem;
 }
 
 .secondary-btn:hover {
@@ -97,11 +100,11 @@ button:disabled {
 
 .advanced-options {
   background: #2a2a2a;
-  padding: 1rem;
+  padding: 0.6rem;
   border-radius: 8px;
   display: inline-flex;
-  gap: 1.5rem;
-  margin-top: 1rem;
+  gap: 1rem;
+  margin-top: 0.5rem;
   border: 1px solid #444;
 }
 
@@ -109,52 +112,55 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   cursor: pointer;
 }
 
 .error-msg {
   color: #ff6b6b;
   text-align: center;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
 }
 
 .active-courses {
   display: flex;
   gap: 0.5rem;
-  margin-bottom: 2rem;
+  margin-bottom: 1rem;
   flex-wrap: wrap;
 }
 
 .course-tag {
   color: #333;
-  padding: 0.3rem 0.8rem;
+  padding: 0.2rem 0.6rem;
   border-radius: 20px;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   font-weight: 600;
+  font-size: 0.9rem;
 }
 
 .course-tag button {
   background: transparent;
   color: #333;
   padding: 0;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   line-height: 1;
 }
 
 .week-columns {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 1rem;
+  grid-template-columns: 50px repeat(5, 1fr);
+  /* 50px for Time Axis */
+  gap: 0.5rem;
 }
 
 .day-column {
   background: #2a2a2a;
   border-radius: 8px;
-  min-height: 500px;
-  padding: 0.5rem;
+  position: relative;
+  /* Min height handled by container content */
 }
 
 .day-column h3 {
@@ -162,6 +168,41 @@ button:disabled {
   border-bottom: 1px solid #444;
   padding-bottom: 0.5rem;
   margin-top: 0;
+  height: 30px;
+  /* Fixed header height */
+  margin-bottom: 0;
+  font-size: 1rem;
+}
+
+.day-events-container {
+  position: relative;
+  /* 12 hours (08-20) * 60 min * 1.0 px/min = 720px */
+  height: 720px;
+  border-left: 1px solid #333;
+}
+
+.time-axis {
+  position: relative;
+  height: 720px;
+  border-right: 1px solid #444;
+}
+
+.time-marker {
+  position: absolute;
+  width: 100%;
+  text-align: right;
+  padding-right: 5px;
+  font-size: 0.75rem;
+  color: #888;
+  transform: translateY(-50%);
+  /* Center vertically on the line */
+}
+
+.grid-line {
+  position: absolute;
+  width: 100%;
+  border-top: 1px dashed #3a3a3a;
+  pointer-events: none;
 }
 
 .event-card {
@@ -171,6 +212,13 @@ button:disabled {
   margin-bottom: 0.5rem;
   font-size: 0.9rem;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.event-card.absolute {
+  margin-bottom: 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  z-index: 10;
 }
 
 .event-time {
