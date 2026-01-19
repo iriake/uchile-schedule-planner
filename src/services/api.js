@@ -3,7 +3,24 @@ export const buildUCursosUrl = (facultad, ano, semestre, codigo, seccion) => {
 };
 
 export const buildUCursosIcsUrl = (facultad, ano, semestre, codigo, seccion) => {
-    return `https://www.u-cursos.cl/${facultad}/${ano}/${semestre}/${codigo}/${seccion}/horario_curso/icalendar`;
+    // Use proxy path provided by Vite config
+    return `/ucursos-api/${facultad}/${ano}/${semestre}/${codigo}/${seccion}/horario_curso/icalendar`;
+};
+
+export const checkSectionExists = async (facultad, ano, semestre, codigo, seccion) => {
+    const url = buildUCursosIcsUrl(facultad, ano, semestre, codigo, seccion);
+    try {
+        const response = await fetch(url, { method: 'HEAD' });
+        return response.ok;
+    } catch (e) {
+        // If HEAD fails (e.g. CORS preflight issues sometimes), try GET
+        try {
+            const response = await fetch(url);
+            return response.ok;
+        } catch (e2) {
+            return false;
+        }
+    }
 };
 
 export const parseIcsSchedule = (icsContent) => {
