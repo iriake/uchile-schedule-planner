@@ -69,13 +69,27 @@ export const parseIcsSchedule = (icsContent) => {
         const startTime = formatTime(event.start);
         const endTime = formatTime(event.end);
 
-        // Prefer CATEGORIES (e.g. "Cátedra", "Auxiliar", "Examen")
+        // Prefer CATEGORIES await (e.g. "Cátedra", "Auxiliar", "Examen")
         // If not available, use SUMMARY or default.
         const type = event.categories || event.summary || 'Evento';
 
+        // Extract Course Name from Summary if possible
+        // Summary format usually: "CODE Course Name"
+        let courseName = event.summary || '';
+        // Remove code prefix if present (e.g. "CC5205-1 ")
+        // We assume code is the first word(s) or standard format. 
+        // A simple heuristic: if summary starts with code-like pattern.
+        // But since we don't have the code readily available in the params here easily without passing it down,
+        // we can just try to strip the "Top level" code. 
+        // actually we can just pass it or try to regex it. 
+        // The ICS summary is "CC5205-1 Minería de Datos"
+        // Regex: /^[A-Z]{2}\d{4}-\d+\s+(.*)$/
+        const nameMatch = courseName.match(/^[A-Z]{2,}\d{4}(?:-\d+)?\s+(.*)$/);
+        if (nameMatch) {
+            courseName = nameMatch[1];
+        }
+
         // Key logic: Day-Start-End-Type
-        // This groups all Mondays 12:00 Cátedra into one entry.
-        // It also groups Exams if they happen on same day/time (unlikely for exams, but if they do).
         const key = `${dayName}-${startTime}-${endTime}-${type}`;
 
         const room = event.location || '';
@@ -88,10 +102,11 @@ export const parseIcsSchedule = (icsContent) => {
                 type,
                 room,
                 rawTime: `${startTime} - ${endTime}`,
-                isATest: type.includes('Examen') || type.includes('Control') || (event.description && (event.description.includes('Examen') || event.description.includes('Control')))
+                isATest: type.includes('Examen') || type.includes('Control') || (event.description && (event.description.includes('Examen') || event.description.includes('Control'))),
+                courseName: courseName // Add extracted name
             });
         } else {
-            // If the same slot appears again (e.g. next Monday), we check if room changed.
+            // If the same slot appears again, check if room changed.
             const existing = uniqueMap.get(key);
             if (room && existing.room && !existing.room.includes(room)) {
                 existing.room += `, ${room}`;

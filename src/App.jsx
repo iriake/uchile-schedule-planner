@@ -4,11 +4,11 @@ import './index.css';
 
 function App() {
     const [facultad, setFacultad] = useState('ingenieria');
-    const [ano, setAno] = useState('2026'); // Defaulting to 2026 as verified working year
+    const [ano, setAno] = useState('2026');
     const [semestre, setSemestre] = useState('1');
     const [codigo, setCodigo] = useState('');
 
-    const [courses, setCourses] = useState([]); // Array of { code, events: [] }
+    const [courses, setCourses] = useState([]); // Array of active/inactive courses
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
@@ -17,7 +17,7 @@ function App() {
     const [showTests, setShowTests] = useState(true);
     const [showRooms, setShowRooms] = useState(true);
 
-    const [foundSections, setFoundSections] = useState([]); // Array of section numbers
+    const [foundSections, setFoundSections] = useState([]);
     const [searching, setSearching] = useState(false);
 
     // 1. Search for available sections
@@ -28,45 +28,24 @@ function App() {
         setError(null);
 
         const upperCode = codigo.toUpperCase();
-        console.log(`Searching sections for ${upperCode}...`);
-
         const validSections = [];
         // Loop from 1 up to 20 (safe limit)
         for (let i = 1; i <= 20; i++) {
             try {
-                // We use our helper checkSectionExists, OR we can just try to fetch here.
-                // Since we need to use the imported helper.
-                // Assuming checkSectionExists is imported.
-                // We'll define a quick helper here if not imported, or update import.
-                // Let's rely on api.js import.
-                // Actually, I need to make sure I import checkSectionExists at the top first.
-                // For now, I'll inline the logic using the duplicate Url builder or update imports later.
-                // Wait, I can't update imports in THIS block easily without seeing the top.
-                // I'll assume checkSectionExists is imported or I'll implement the loop using buildUCursosIcsUrl.
-
                 const url = buildUCursosIcsUrl(facultad, ano, semestre, upperCode, i.toString());
-                const response = await fetch(url, { method: 'HEAD' }); // Try HEAD first
-
-                // If HEAD fails/404, break loop?
-                // U-Cursos usually returns 404 for non-existent calendar.
+                const response = await fetch(url, { method: 'HEAD' });
                 if (response.ok) {
                     validSections.push(i);
                 } else {
-                    // If 404, we assume no more sections exist (sequential principle).
                     break;
                 }
             } catch (e) {
-                // Network error or CORS might throw. 
-                // If 1 fails, maybe we should stop? Or try a few more?
-                // Prompt said "si no existe la 4, entonces no existen las siguientes".
-                // So on error/failure, we break.
-                console.warn(`Stopped searching at section ${i} due to error/404`);
                 break;
             }
         }
 
         if (validSections.length === 0) {
-            setError('No se encontraron secciones para este curso (o error de conexión).');
+            setError('No se encontraron secciones (o error de conexión).');
         } else {
             setFoundSections(validSections);
         }
@@ -81,7 +60,8 @@ function App() {
         const codeWithSec = `${upperCode}-${secNum}`;
 
         if (courses.some(c => c.id === codeWithSec)) {
-            setError(`La sección ${secNum} de ${upperCode} ya fue añadida.`);
+            // If exists but inactive, maybe just activate? For now just error.
+            setError(`La sección ${secNum} ya está en la lista.`);
             setLoading(false);
             return;
         }
@@ -93,18 +73,26 @@ function App() {
             const parsedEvents = parseIcsSchedule(icsText);
 
             if (parsedEvents.length === 0) {
-                setError(`La sección ${secNum} no tiene horarios definidos.`);
+                setError(`La sección ${secNum} no tiene horarios.`);
             } else {
+                // Extract course name from first event if available, or use placeholder
+                let courseName = 'Curso';
+                const firstEventWithName = parsedEvents.find(e => e.courseName);
+                if (firstEventWithName) {
+                    courseName = firstEventWithName.courseName;
+                }
+
                 setCourses(prev => [
                     ...prev,
                     {
-                        id: codeWithSec, // Unique ID for React key
+                        id: codeWithSec,
                         code: `${upperCode}-${secNum}`,
+                        name: courseName,
                         events: parsedEvents,
-                        color: getRandomColor()
+                        color: getRandomColor(),
+                        isActive: true
                     }
                 ]);
-                // We keep foundSections visible so user can add another section if they want.
             }
         } catch (err) {
             setError('Error al obtener la sección.');
@@ -113,34 +101,35 @@ function App() {
         }
     };
 
-    // Simple random color generator for course differentiation
+    const toggleCourseActive = (courseId) => {
+        setCourses(prev => prev.map(c =>
+            c.id === courseId ? { ...c, isActive: !c.isActive } : c
+        ));
+    };
+
+    const removeCourse = (courseId) => {
+        setCourses(courses.filter(cx => cx.id !== courseId));
+    };
+
     const getRandomColor = () => {
-        const colors = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec', '#fffde7'];
+        const colors = ['#e3f2fd', '#f3e5f5', '#e8f5e9', '#fff3e0', '#fce4ec', '#fffde7', '#e1f5fe', '#fafafa'];
         return colors[Math.floor(Math.random() * colors.length)];
     };
 
-    const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
-
-    // Helper to parse time string "HH:MM" to minutes
     const parseTime = (timeStr) => {
         const [hh, mm] = timeStr.split(':').map(Number);
         return hh * 60 + mm;
     };
 
-    // Layout algorithm for overlapping events
     const layoutDayEvents = (events) => {
-        // Sort by start time
         const sorted = [...events].sort((a, b) => parseTime(a.startTime) - parseTime(b.startTime));
         const clusters = [];
 
-        // simple clustering: if event overlaps with cluster, add to cluster
         for (const event of sorted) {
             const start = parseTime(event.startTime);
             const end = parseTime(event.endTime);
-
             let added = false;
             for (const cluster of clusters) {
-                // Check overlap with cluster bounds
                 if (start < cluster.end) {
                     cluster.events.push(event);
                     cluster.end = Math.max(cluster.end, end);
@@ -148,23 +137,14 @@ function App() {
                     break;
                 }
             }
-
-            if (!added) {
-                clusters.push({ events: [event], start, end });
-            }
+            if (!added) clusters.push({ events: [event], start, end });
         }
 
         const nodes = [];
-
-        // Process each cluster to assign width/left
         for (const cluster of clusters) {
-            const columns = []; // array of arrays of events
-
+            const columns = [];
             for (const event of cluster.events) {
                 const start = parseTime(event.startTime);
-                const end = parseTime(event.endTime);
-
-                // Find first column where this event fits
                 let placed = false;
                 for (let i = 0; i < columns.length; i++) {
                     const lastInCol = columns[i][columns[i].length - 1];
@@ -175,21 +155,16 @@ function App() {
                         break;
                     }
                 }
-
                 if (!placed) {
                     columns.push([event]);
                     event.colIndex = columns.length - 1;
                 }
             }
-
             const totalCols = columns.length;
-
             for (const event of cluster.events) {
                 const start = parseTime(event.startTime);
                 const end = parseTime(event.endTime);
-                // 08:00 is 480 min. Grid starts at 08:00.
-                // Scale: 1 px per min is usually good for desktop (60px/hour)
-                const startMin = 480;
+                const startMin = 480; // 08:00
                 const scale = 1.0;
 
                 const top = (start - startMin) * scale;
@@ -203,8 +178,7 @@ function App() {
                         top: `${top}px`,
                         height: `${height}px`,
                         left: `${left}%`,
-                        width: `${width}%`,
-                        position: 'absolute'
+                        width: `${width}%`
                     }
                 });
             }
@@ -212,167 +186,193 @@ function App() {
         return nodes;
     };
 
+    const days = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
+
     return (
-        <div className="container">
-            <header>
+        <div className="app-layout">
+            {/* SIDEBAR */}
+            <aside className="sidebar">
                 <h1>UChile Schedule Planner</h1>
-            </header>
 
-            <div className="config-panel">
-                <label>
-                    Facultad:
-                    <select value={facultad} onChange={e => setFacultad(e.target.value)}>
-                        <option value="ingenieria">Ingeniería</option>
-                    </select>
-                </label>
+                <div className="sidebar-section">
+                    <h2>Buscar Ramos</h2>
 
-                <label>
-                    Año:
-                    <select value={ano} onChange={e => setAno(e.target.value)}>
-                        <option value="2024">2024</option>
-                        <option value="2025">2025</option>
-                        <option value="2026">2026</option>
-                    </select>
-                </label>
+                    <div className="form-row">
+                        <div className="form-group">
+                            <label>Facultad</label>
+                            <select value={facultad} onChange={e => setFacultad(e.target.value)}>
+                                <option value="ingenieria">Ingeniería</option>
+                            </select>
+                        </div>
+                    </div>
 
-                <label>
-                    Semestre:
-                    <select value={semestre} onChange={e => setSemestre(e.target.value)}>
-                        <option value="1">Otoño</option>
-                        <option value="2">Primavera</option>
-                    </select>
-                </label>
+                    <div className="form-row">
+                        <div className="form-group">
+                            <label>Año</label>
+                            <select value={ano} onChange={e => setAno(e.target.value)}>
+                                <option value="2024">2024</option>
+                                <option value="2025">2025</option>
+                                <option value="2026">2026</option>
+                            </select>
+                        </div>
+                        <div className="form-group">
+                            <label>Semestre</label>
+                            <select value={semestre} onChange={e => setSemestre(e.target.value)}>
+                                <option value="1">Otoño</option>
+                                <option value="2">Primavera</option>
+                            </select>
+                        </div>
+                    </div>
 
-                <div className="input-group">
-                    <input
-                        type="text"
-                        placeholder="Código (ej: CC5205)"
-                        value={codigo}
-                        onChange={e => setCodigo(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                    />
-                    <button onClick={handleSearch} disabled={searching}>
-                        {searching ? 'Buscando...' : 'Buscar'}
-                    </button>
+                    <div className="search-box">
+                        <input
+                            type="text"
+                            placeholder="Buscar código..."
+                            value={codigo}
+                            onChange={e => setCodigo(e.target.value)}
+                            onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                        />
+                        <button onClick={handleSearch} disabled={searching} style={{ padding: '0 1rem' }}>
+                            {searching ? '...' : '🔍'}
+                        </button>
+                    </div>
+
+                    {error && <div className="error-msg" style={{ textAlign: 'left' }}>{error}</div>}
+
+                    {/* Found Sections List */}
+                    {foundSections.length > 0 && (
+                        <div className="found-sections">
+                            <h2 style={{ fontSize: '0.8rem', marginTop: '0.5rem' }}>Secciones encontradas:</h2>
+                            {foundSections.map(num => {
+                                const isAdded = courses.some(c => c.code === `${codigo.toUpperCase()}-${num}`);
+                                return (
+                                    <div key={num} className="found-section-item">
+                                        <span>Sec {num}</span>
+                                        <button
+                                            className="add-btn"
+                                            onClick={() => handleAddSection(num)}
+                                            disabled={isAdded || loading}
+                                        >
+                                            {isAdded ? 'Agregado' : 'Agregar'}
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
-                {foundSections.length > 0 && (
-                    <div className="sections-list" style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-                        <span>Secciones:</span>
-                        {foundSections.map(num => (
-                            <button
-                                key={num}
-                                onClick={() => handleAddSection(num)}
-                                className="secondary-btn"
-                                disabled={loading}
-                                style={{ borderColor: '#646cff', color: 'white' }}
+                <div className="sidebar-section">
+                    <button className="secondary-btn" onClick={() => setShowAdvanced(!showAdvanced)} style={{ width: '100%' }}>
+                        {showAdvanced ? 'Ocultar Opciones' : 'Configuración Avanzada'}
+                    </button>
+                    {showAdvanced && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
+                            <label style={{ display: 'flex', gap: '0.5rem', fontSize: '0.8rem', color: '#aaa' }}>
+                                <input type="checkbox" checked={showTests} onChange={e => setShowTests(e.target.checked)} />
+                                Controles/Exámenes
+                            </label>
+                            <label style={{ display: 'flex', gap: '0.5rem', fontSize: '0.8rem', color: '#aaa' }}>
+                                <input type="checkbox" checked={showRooms} onChange={e => setShowRooms(e.target.checked)} />
+                                Salas
+                            </label>
+                        </div>
+                    )}
+                </div>
+
+                <div className="sidebar-section" style={{ flex: 1 }}>
+                    <h2>Mis Ramos</h2>
+                    <div className="course-list">
+                        {courses.length === 0 && <span style={{ fontSize: '0.8rem', color: '#666', fontStyle: 'italic' }}>No has agregado ramos.</span>}
+                        {courses.map(c => (
+                            <div
+                                key={c.id}
+                                className={`course-item ${!c.isActive ? 'inactive' : ''}`}
+                                onClick={() => toggleCourseActive(c.id)}
                             >
-                                {num}
-                            </button>
+                                <div className="course-info">
+                                    <div className="course-color-dot" style={{ background: c.color }}></div>
+                                    <div className="course-details">
+                                        <span className="course-code">{c.code}</span>
+                                        <span className="course-name">{c.name || 'Cargando...'}</span>
+                                    </div>
+                                </div>
+                                <button className="remove-btn" onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeCourse(c.id);
+                                }}>×</button>
+                            </div>
                         ))}
                     </div>
-                )}
-            </div>
-
-            <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-                <button
-                    className="secondary-btn"
-                    onClick={() => setShowAdvanced(!showAdvanced)}
-                >
-                    {showAdvanced ? 'Ocultar Configuración Avanzada' : 'Configuración Avanzada'}
-                </button>
-
-                {showAdvanced && (
-                    <div className="advanced-options">
-                        <label>
-                            <input
-                                type="checkbox"
-                                checked={showTests}
-                                onChange={e => setShowTests(e.target.checked)}
-                            />
-                            Mostrar Controles/Exámenes
-                        </label>
-                        <label>
-                            <input
-                                type="checkbox"
-                                checked={showRooms}
-                                onChange={e => setShowRooms(e.target.checked)}
-                            />
-                            Mostrar Salas
-                        </label>
-                    </div>
-                )}
-            </div>
-
-            {error && <div className="error-msg">{error}</div>}
-
-            <div className="active-courses">
-                {courses.map((c, i) => (
-                    <span key={c.id || i} className="course-tag" style={{ backgroundColor: c.color }}>
-                        {c.code}
-                        <button onClick={() => setCourses(courses.filter(cx => cx.id !== c.id))}>×</button>
-                    </span>
-                ))}
-            </div>
-
-            <div className="week-columns">
-                {/* Time Axis Column */}
-                <div className="time-axis" style={{ marginTop: '30px' }}>
-                    {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map(h => (
-                        <div key={h} className="time-marker" style={{ top: `${(h * 60 - 480) * 1.0}px` }}>
-                            {h}:00
-                        </div>
-                    ))}
                 </div>
 
-                {days.map(day => {
-                    // Gather all events for this day
-                    const dayEventsRaw = courses.flatMap(c =>
-                        c.events
-                            .filter(e => e.day === day)
-                            .filter(e => showTests || !e.isATest)
-                            .map(e => ({ ...e, color: c.color, code: c.code }))
-                    );
+            </aside>
 
-                    const eventNodes = layoutDayEvents(dayEventsRaw);
+            {/* MAIN CONTENT - SCHEDULE */}
+            <main className="main-content">
+                <div className="header-controls">
+                    {/* Placeholder for top bar if needed, or just spacers */}
+                </div>
 
-                    return (
-                        <div key={day} className="day-column">
-                            <h3>{day}</h3>
-                            <div className="day-events-container">
-                                {/* Grid lines */}
-                                {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map(h => (
-                                    <div key={h} className="grid-line" style={{ top: `${(h * 60 - 480) * 1.0}px` }}></div>
-                                ))}
-
-                                {eventNodes.map((node, idx) => (
-                                    <div
-                                        key={`${node.event.code}-${idx}`}
-                                        className="event-card absolute"
-                                        style={{
-                                            ...node.style,
-                                            backgroundColor: node.event.color,
-                                            fontSize: '0.75rem',
-                                            overflow: 'hidden',
-                                            padding: '2px 4px'
-                                        }}
-                                        title={`${node.event.code} - ${node.event.type} (${node.event.startTime} - ${node.event.endTime})`}
-                                    >
-                                        <div style={{ fontWeight: 'bold' }}>{node.event.code}</div>
-                                        <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {node.event.startTime}-{node.event.endTime}
-                                        </div>
-                                        <div style={{ fontStyle: 'italic' }}>{node.event.type}</div>
-                                        {showRooms && <div className="event-room">{node.event.room}</div>}
-                                    </div>
-                                ))}
-                            </div>
+                <div className="week-columns">
+                    {/* Time Axis */}
+                    <div className="time-axis">
+                        <div className="day-header-spacer"></div>
+                        <div className="day-content">
+                            {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map(h => (
+                                <div key={h} className="time-marker" style={{ top: `${(h * 60 - 480) * 1.0}px` }}>
+                                    {h}:00
+                                </div>
+                            ))}
                         </div>
-                    );
-                })}
-            </div>
+                    </div>
+
+                    {days.map(day => {
+                        const dayEventsRaw = courses
+                            .filter(c => c.isActive)
+                            .flatMap(c => c.events
+                                .filter(e => e.day === day)
+                                .filter(e => showTests || !e.isATest)
+                                .map(e => ({ ...e, color: c.color, code: c.code, courseName: c.name }))
+                            );
+
+                        const eventNodes = layoutDayEvents(dayEventsRaw);
+
+                        return (
+                            <div key={day} className="day-column">
+                                <h3>{day}</h3>
+                                <div className="day-content">
+                                    {/* Grid lines */}
+                                    {[8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map(h => (
+                                        <div key={h} className="grid-line" style={{ top: `${(h * 60 - 480) * 1.0}px` }}></div>
+                                    ))}
+
+                                    {eventNodes.map((node, idx) => (
+                                        <div
+                                            key={`${node.event.code}-${idx}`}
+                                            className="event-card"
+                                            style={{
+                                                ...node.style,
+                                                backgroundColor: node.event.color,
+                                            }}
+                                            title={`${node.event.code} - ${node.event.type}`}
+                                        >
+                                            <div style={{ fontWeight: 'bold', fontSize: '0.8rem', lineHeight: '1.1', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                                                {node.event.courseName || node.event.code}
+                                            </div>
+                                            <div style={{ fontSize: '0.7rem', opacity: 0.9 }}>{node.event.code}</div>
+                                            <div style={{ fontSize: '0.7rem', fontStyle: 'italic', opacity: 0.8 }}>{node.event.type}</div>
+                                            {showRooms && <div style={{ fontSize: '0.65rem', marginTop: '2px' }}>{node.event.room}</div>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </main>
         </div>
-    )
+    );
 }
 
-export default App
+export default App;
